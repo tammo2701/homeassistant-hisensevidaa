@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.components import dhcp, network
+from homeassistant.components import network
 from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME, CONF_PORT
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -305,6 +305,8 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _async_scan_local_networks(self) -> list[str]:
         """Probe enabled local IPv4 subnets for the VIDAA MQTT service."""
+        from homeassistant.components import dhcp
+
         adapters = await network.async_get_adapters(self.hass)
         subnets: set[ipaddress.IPv4Network] = set()
         for adapter in adapters:
