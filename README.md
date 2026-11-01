@@ -2,6 +2,13 @@
 
 A local Home Assistant integration for Hisense TVs running VIDAA OS, focused on models from **2020 through 2026**. The integration communicates directly with the TV over its local network; it does not use a cloud service or external MQTT broker.
 
+## Quick links
+
+[![Add this repository to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tammo2701&repository=homeassistant-hisensevidaa&category=integration)
+[![Open the integration setup in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=vidaa)
+
+Use the HACS button first to add and install the repository. After installation, use the Home Assistant button to start TV setup. This project is a Home Assistant integration, not an add-on.
+
 ## Features
 
 - Media player controls for power state, volume, mute, playback, and input selection
@@ -20,9 +27,9 @@ Home Assistant 2024.6 or newer is required.
 
 ## Installation with HACS
 
-1. In HACS, open **Integrations** and choose **Custom repositories** from the menu.
-2. Add `https://github.com/tammo2701/homeassistant-hisensevidaa` as an **Integration**.
-3. Install **Hisense VIDAA TV** and restart Home Assistant.
+1. Use the **Add this repository to HACS** button above, or open **HACS → Integrations → Custom repositories**.
+2. Add `https://github.com/tammo2701/homeassistant-hisensevidaa` as an **Integration**, then install **Hisense VIDAA TV** from HACS.
+3. Start setup with the **Open the integration setup in Home Assistant** button, or use **Settings → Devices & services → Add integration**.
 
 ## Manual installation
 
