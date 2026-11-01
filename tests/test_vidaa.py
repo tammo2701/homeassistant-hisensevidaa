@@ -28,11 +28,11 @@ def test_manifest_declares_background_discovery_and_local_push() -> None:
     assert manifest["ssdp"]
 
 
-def test_user_flow_offers_scan_and_manual_setup(hass) -> None:
+async def test_user_flow_offers_scan_and_manual_setup(hass) -> None:
     flow = VidaaConfigFlow()
     flow.hass = hass
 
-    result = flow.async_step_user()
+    result = await flow.async_step_user()
 
     assert result["type"] == "menu"
     assert set(result["menu_options"]) == {"scan", "manual"}
@@ -47,6 +47,8 @@ async def test_dhcp_discovery_aborts_for_existing_mac(hass, monkeypatch) -> None
     flow._async_current_entries = MagicMock(return_value=[entry])
     update_entry = MagicMock()
     monkeypatch.setattr(hass.config_entries, "async_update_entry", update_entry)
+    schedule_reload = MagicMock()
+    monkeypatch.setattr(hass.config_entries, "async_schedule_reload", schedule_reload)
     info = MagicMock(ip="192.168.1.21", macaddress=mac, hostname="hisense-tv")
 
     result = await flow.async_step_dhcp(info)
@@ -54,6 +56,7 @@ async def test_dhcp_discovery_aborts_for_existing_mac(hass, monkeypatch) -> None
     assert result["type"] == "abort"
     assert result["reason"] == "already_configured"
     update_entry.assert_called_once()
+    schedule_reload.assert_called_once_with(entry.entry_id)
 
 
 def test_topic_sleep_marks_tv_in_standby(hass) -> None:
