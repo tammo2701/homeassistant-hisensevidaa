@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
 import os
 import uuid
 from typing import Any
@@ -12,7 +13,7 @@ from urllib.parse import urlsplit
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.components import network
+from homeassistant.components import dhcp, network
 from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME, CONF_PORT
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -28,6 +29,8 @@ from .const import (
     DOMAIN,
 )
 from .vidaa import CannotConnect, InvalidAuth, VidaaTV
+
+_LOGGER = logging.getLogger(__name__)
 
 MANUAL_SCHEMA = vol.Schema(
     {
@@ -104,11 +107,11 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_update_reload_and_abort(
                     self._reauth_entry, data_updates={}
                 )
-        except CannotConnect:
+        except CannotConnect as err:
             if self._tv is not None:
                 await _safe_disconnect(self._tv)
             self._tv = None
-            errors["base"] = "cannot_connect"
+            errors["base"] = err.reason
         except InvalidAuth:
             if self._tv is not None:
                 await _safe_disconnect(self._tv)
@@ -135,11 +138,11 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             self._reauth_entry, data_updates={}
                         )
                 await self._tv.async_send_pin(user_input["pin"])
-            except CannotConnect:
+            except CannotConnect as err:
                 if self._tv is not None:
                     await _safe_disconnect(self._tv)
                 self._tv = None
-                errors["base"] = "cannot_connect"
+                errors["base"] = err.reason
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
             else:
@@ -275,9 +278,6 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         await self.async_set_unique_id((mac or host).casefold())
         self._abort_if_unique_id_configured()
-        if not await _async_port_open(host, DEFAULT_PORT):
-            return self.async_abort(reason="not_vidaa_tv")
-
         hostname = str(getattr(discovery_info, "hostname", "") or "").strip()
         name = hostname or f"VIDAA TV ({host})"
         self._discovered_data = {
@@ -321,6 +321,12 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 subnets.add(subnet)
 
         hosts = sorted({str(host) for subnet in subnets for host in subnet.hosts()})
+        # Home Assistant's DHCP listener may know TV addresses that are not
+        # visible on the adapter list (common with host/container networking).
+        hosts = sorted(
+            set(hosts)
+            | {str(info.ip) for info in dhcp.async_discovered_service_info(self.hass)}
+        )
         semaphore = asyncio.Semaphore(64)
 
         async def _probe(host: str) -> str | None:
@@ -338,8 +344,17 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     pass
                 return host
 
+        _LOGGER.debug(
+            "Scanning %s local/DHCP host candidates for VIDAA TVs", len(hosts)
+        )
         found = await asyncio.gather(*(_probe(host) for host in hosts))
-        return [host for host in found if host is not None]
+        detected = [host for host in found if host is not None]
+        _LOGGER.debug(
+            "VIDAA scan found %s hosts with TCP port %s open",
+            len(detected),
+            DEFAULT_PORT,
+        )
+        return detected
 
     async def _async_connect(
         self, user_input: dict[str, Any]
@@ -376,10 +391,16 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             already_paired = await tv.async_authenticate()
         except (CannotConnect, InvalidAuth) as err:
             await _safe_disconnect(tv)
-            if isinstance(err, InvalidAuth):
-                error = "invalid_auth"
+            if isinstance(err, CannotConnect):
+                _LOGGER.warning(
+                    "VIDAA setup failed for %s:%s: %s",
+                    host,
+                    user_input.get(CONF_PORT, DEFAULT_PORT),
+                    err,
+                )
+                error = err.reason
             else:
-                error = "cannot_connect"
+                error = "invalid_auth"
             return self.async_show_form(
                 step_id="manual",
                 data_schema=MANUAL_SCHEMA,
@@ -452,19 +473,3 @@ async def _safe_disconnect(tv: VidaaTV) -> None:
         await tv.async_disconnect()
     except Exception:  # noqa: BLE001 - best effort cleanup
         pass
-
-
-async def _async_port_open(host: str, port: int) -> bool:
-    """Check that the VIDAA MQTT TCP endpoint is reachable."""
-    try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=1.0
-        )
-    except (OSError, asyncio.TimeoutError):
-        return False
-    writer.close()
-    try:
-        await writer.wait_closed()
-    except OSError:
-        pass
-    return True

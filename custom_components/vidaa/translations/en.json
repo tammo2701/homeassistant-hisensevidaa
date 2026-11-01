@@ -60,7 +60,12 @@
       "invalid_auth": "The TV rejected the PIN. Please try again.",
       "invalid_mac": "Enter a valid MAC address.",
       "no_tvs_found": "No VIDAA TVs were found on the enabled local networks.",
-      "scan_failed": "Home Assistant could not scan the local networks. Try again or enter the TV address manually."
+      "scan_failed": "Home Assistant could not scan the local networks. Try again or enter the TV address manually.",
+      "connection_timeout": "The TV address responded, but the secure MQTT connection did not complete in time. Make sure the TV is awake, on the same LAN, and mobile remote control is enabled. Check the Home Assistant log for the connection stage.",
+      "connection_failed": "Home Assistant could not complete the TV's secure MQTT connection. Check the TV's mobile remote setting and the Home Assistant log for the TLS/MQTT reason.",
+      "mqtt_handshake_failed": "The TV closed the secure MQTT connection before setup completed. This can happen when the TV requires a different VIDAA authentication method. Check mobile remote settings and share the TV model, firmware, and Home Assistant log details.",
+      "mqtt_auth_rejected": "The TV rejected the MQTT client credentials before PIN pairing. This is not a PIN error; the TV firmware may require a different authentication method.",
+      "mqtt_connection_rejected": "The TV rejected the MQTT connection. Check that mobile remote control is enabled and review the Home Assistant log for the broker response."
     },
     "abort": {
       "already_configured": "This TV is already configured.",

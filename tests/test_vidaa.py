@@ -9,7 +9,7 @@ from homeassistant.const import CONF_HOST, CONF_NAME
 from vidaa.config_flow import VidaaConfigFlow
 from vidaa.const import DOMAIN
 from vidaa.diagnostics import TO_REDACT
-from vidaa.vidaa import TOPIC_SLEEP, VidaaTV
+from vidaa.vidaa import CannotConnect, TOPIC_SLEEP, VidaaTV
 
 
 ROOT = Path(__file__).parents[1]
@@ -72,6 +72,44 @@ def test_topic_sleep_marks_tv_in_standby(hass) -> None:
     tv._ingest(TOPIC_SLEEP, "")
 
     assert tv.state["statetype"] == "fake_sleep_0"
+
+
+async def test_broker_credential_rejection_is_not_reported_as_bad_pin(hass) -> None:
+    tv = VidaaTV(
+        hass,
+        host="192.168.1.2",
+        port=36669,
+        client_id="test-client",
+        certfile="unused.crt",
+        keyfile="unused.key",
+    )
+    future = hass.loop.create_future()
+    tv._connect_future = future
+
+    tv._on_connect(MagicMock(), None, None, 5)
+
+    with pytest.raises(CannotConnect) as error:
+        await future
+    assert error.value.reason == "mqtt_auth_rejected"
+
+
+async def test_early_disconnect_reports_handshake_failure(hass) -> None:
+    tv = VidaaTV(
+        hass,
+        host="192.168.1.2",
+        port=36669,
+        client_id="test-client",
+        certfile="unused.crt",
+        keyfile="unused.key",
+    )
+    future = hass.loop.create_future()
+    tv._connect_future = future
+
+    tv._on_disconnect(MagicMock(), None, 7)
+
+    with pytest.raises(CannotConnect) as error:
+        await future
+    assert error.value.reason == "mqtt_handshake_failed"
 
 
 def test_diagnostics_redact_network_identifiers() -> None:

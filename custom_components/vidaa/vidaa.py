@@ -62,6 +62,11 @@ class VidaaError(HomeAssistantError):
 class CannotConnect(VidaaError):
     """Raised when the TV broker cannot be reached."""
 
+    def __init__(self, message: str, reason: str = "cannot_connect") -> None:
+        """Keep a stable reason so the config flow can show useful guidance."""
+        super().__init__(message)
+        self.reason = reason
+
 
 class InvalidAuth(VidaaError):
     """Raised when PIN pairing fails."""
@@ -138,10 +143,10 @@ class VidaaTV:
 
     async def async_connect(self) -> None:
         """Connect and start the network loop."""
-        if not self._tls_ready:
-            await self.hass.async_add_executor_job(self._setup_tls)
         self._connect_future = self.hass.loop.create_future()
         try:
+            if not self._tls_ready:
+                await self.hass.async_add_executor_job(self._setup_tls)
             await self.hass.async_add_executor_job(
                 self._client.connect, self.host, self.port, KEEPALIVE
             )
@@ -150,13 +155,24 @@ class VidaaTV:
             await asyncio.wait_for(self._connect_future, DISCOVERY_TIMEOUT)
         except asyncio.TimeoutError as err:
             await self.async_disconnect()
-            raise CannotConnect("Timed out waiting for the TV MQTT connection") from err
+            raise CannotConnect(
+                "Timed out waiting for the TV MQTT/TLS handshake",
+                reason="connection_timeout",
+            ) from err
         except (CannotConnect, InvalidAuth):
             await self.async_disconnect()
             raise
-        except (OSError, socket.error) as err:
+        except (OSError, socket.error, ssl.SSLError, mqtt.MQTTException) as err:
             await self.async_disconnect()
-            raise CannotConnect(str(err)) from err
+            _LOGGER.warning(
+                "VIDAA connection to %s:%s failed during TLS/MQTT startup: %s",
+                self.host,
+                self.port,
+                err,
+            )
+            raise CannotConnect(
+                str(err) or type(err).__name__, reason="connection_failed"
+            ) from err
     async def async_disconnect(self) -> None:
         """Stop the loop and disconnect."""
         if self._network_loop_started:
@@ -184,10 +200,18 @@ class VidaaTV:
 
     def _on_connect(self, client, userdata, flags, rc) -> None:
         if rc != 0:
-            error: Exception = (
-                InvalidAuth("The VIDAA TV rejected the MQTT credentials")
-                if int(rc) == 5
-                else CannotConnect(f"The TV refused the MQTT connection ({rc})")
+            reason_code = int(rc)
+            _LOGGER.warning(
+                "VIDAA TV %s:%s rejected MQTT connection (CONNACK %s)",
+                self.host,
+                self.port,
+                reason_code,
+            )
+            error = CannotConnect(
+                f"The TV rejected the MQTT credentials or client identity (CONNACK {reason_code})",
+                reason="mqtt_auth_rejected"
+                if reason_code in (4, 5)
+                else "mqtt_connection_rejected",
             )
             self._finish_connect(error)
             return
@@ -198,19 +222,34 @@ class VidaaTV:
         if was_available is False and self._has_connected:
             _LOGGER.info("Connection to VIDAA TV %s restored", self.host)
         self._has_connected = True
-        # Pull current state right away.
-        self.send("ui_service", "gettvstate")
-        self.send("platform_service", "getvolume")
         self._finish_connect()
         self._dispatch()
+        # Pull current state right away. A rejected state request should not
+        # make a successfully established broker connection look offline.
+        try:
+            self.send("ui_service", "gettvstate")
+            self.send("platform_service", "getvolume")
+        except CannotConnect as err:
+            _LOGGER.debug("VIDAA initial state request failed: %s", err)
 
     def _on_disconnect(self, client, userdata, rc) -> None:
         was_available = self.available
         self.available = False
         if was_available:
             _LOGGER.warning("Connection to VIDAA TV %s was lost", self.host)
-        if self._connect_future is not None:
-            self._finish_connect(CannotConnect("The TV disconnected during startup"))
+        if self._connect_future is not None and not self._connect_future.done():
+            _LOGGER.warning(
+                "VIDAA TV %s:%s closed the connection before MQTT setup completed (reason %s)",
+                self.host,
+                self.port,
+                rc,
+            )
+            self._finish_connect(
+                CannotConnect(
+                    f"The TV closed the MQTT/TLS connection before setup completed (reason {rc})",
+                    reason="mqtt_handshake_failed",
+                )
+            )
         self._dispatch()
 
     def _on_message(self, client, userdata, msg) -> None:

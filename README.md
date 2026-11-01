@@ -47,10 +47,10 @@ Copy `custom_components/vidaa` into the Home Assistant `config/custom_components
 Home Assistant can detect TVs without you opening the integration first:
 
 - UPnP/SSDP advertisements can provide the TV name and model.
-- DHCP hostnames beginning with `hisense`, `vidaa`, or `toshiba`, and the Hisense MAC prefix `10:C7:53`, can trigger a discovery flow. Home Assistant verifies that port `36669` is reachable before offering setup.
+- DHCP hostnames beginning with `hisense`, `vidaa`, or `toshiba`, and the Hisense MAC prefix `10:C7:53`, can trigger a discovery flow. DHCP sightings are offered even if the TV's MQTT port is temporarily unavailable; setup then reports the connection stage clearly.
 - When a configured TV is seen at a new address with the same MAC address, the integration updates its stored address and reloads the connection.
 
-DHCP discovery depends on Home Assistant seeing the TV's DHCP traffic. If the TV does not announce itself, open **Add integration → Hisense VIDAA TV → Scan the local network**. The scan checks enabled IPv4 networks with up to 1,024 addresses and reports hosts with an open VIDAA port. Larger networks are skipped to avoid an excessive scan.
+DHCP discovery depends on Home Assistant seeing the TV's DHCP traffic. If the TV does not announce itself, open **Add integration → Hisense VIDAA TV → Scan the local network**. The scan checks enabled IPv4 networks with up to 1,024 addresses, adds hosts already observed by Home Assistant's DHCP listener, and reports hosts with an open VIDAA port. Larger networks are skipped to avoid an excessive scan.
 
 ## Setup fields
 
@@ -122,7 +122,7 @@ If the TV loses its Home Assistant pairing, the integration asks for the on-scre
 
 - **No discovery prompt:** Confirm that Home Assistant and the TV share a LAN, the TV has mobile remote control enabled, and Home Assistant can receive SSDP/DHCP broadcasts. Try **Scan the local network** or enter the IP manually.
 - **Scan finds nothing:** Confirm the TV is on and that TCP port `36669` is reachable from Home Assistant. The scanner skips IPv4 networks larger than 1,024 addresses.
-- **Connection fails:** Check the IP, port, VLAN/firewall rules, and that the TV is awake. Reserve its address in the router if possible.
+- **Connection fails:** The setup message distinguishes a timeout, a closed TLS/MQTT handshake, and broker credential rejection. Check the IP, port `36669`, VLAN/firewall rules, that the TV is awake, and that mobile remote control is enabled. Review the Home Assistant log for the connection stage and broker response. Reserve its address in the router if possible.
 - **PIN rejected or pairing required:** Enter the current four-digit code shown on the TV. If the TV's mobile-control permission was reset, enable it again in the TV settings.
 - **Wake-on-LAN does not work:** Add the TV's MAC address, enable network standby/Wake-on-LAN in the TV settings, and verify that the TV remains connected to Ethernet or Wi-Fi in standby.
 - **Need help diagnosing an issue:** Download diagnostics from the integration entry. The host, MAC address, and MQTT client ID are redacted.
