@@ -31,7 +31,7 @@ class VidaaEntity(Entity):
         self._tv = tv
         self._entry_id = entry_id
         self._attr_unique_id = entry_id if key is None else f"{entry_id}_{key}"
-        connections = set()
+        connections: set[tuple[str, str]] = set()
         if mac:
             connections.add((CONNECTION_NETWORK_MAC, mac))
         self._name = name

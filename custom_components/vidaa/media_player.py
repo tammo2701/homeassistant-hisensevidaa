@@ -2,26 +2,28 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from homeassistant.components.media_player import (
     MediaPlayerEntity,
+    MediaPlayerDeviceClass,
     MediaPlayerEntityFeature,
     MediaPlayerState,
 )
 from homeassistant.const import CONF_MAC, CONF_NAME
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import VidaaConfigEntry
 from .const import (
     DEFAULT_NAME,
+    DOMAIN,
     KEY_MUTE,
     KEY_POWER,
     KEY_VOLUME_DOWN,
     KEY_VOLUME_UP,
 )
 from .entity import VidaaEntity
+from .vidaa import VidaaTV
 from .wol import send_magic_packet
 
 SUPPORT = (
@@ -34,6 +36,7 @@ SUPPORT = (
     | MediaPlayerEntityFeature.PAUSE
     | MediaPlayerEntityFeature.STOP
 )
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -52,9 +55,10 @@ class VidaaMediaPlayer(VidaaEntity, MediaPlayerEntity):
     """Representation of a VIDAA TV as a media player."""
 
     _attr_name = None
+    _attr_device_class = MediaPlayerDeviceClass.TV
     _attr_supported_features = SUPPORT
 
-    def __init__(self, tv, entry_id: str, mac: str, name: str) -> None:
+    def __init__(self, tv: VidaaTV, entry_id: str, mac: str, name: str) -> None:
         """Initialise the media player."""
         super().__init__(tv, entry_id, mac, name)
         self._mac = mac
@@ -120,7 +124,9 @@ class VidaaMediaPlayer(VidaaEntity, MediaPlayerEntity):
 
     async def async_mute_volume(self, mute: bool) -> None:
         """Mute or unmute the TV."""
-        await self.hass.async_add_executor_job(self._tv.send_key, KEY_MUTE)
+        current = self.is_volume_muted
+        if current is None or current != mute:
+            await self.hass.async_add_executor_job(self._tv.send_key, KEY_MUTE)
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set the absolute volume level."""
@@ -139,6 +145,11 @@ class VidaaMediaPlayer(VidaaEntity, MediaPlayerEntity):
                     item.get("sourcename", ""),
                 )
                 return
+        raise ServiceValidationError(
+            "The selected input is not available on this TV.",
+            translation_domain=DOMAIN,
+            translation_key="invalid_source",
+        )
 
     async def async_media_play(self) -> None:
         """Send play."""

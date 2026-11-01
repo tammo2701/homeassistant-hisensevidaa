@@ -7,10 +7,17 @@ import os
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
-from .const import CLIENT_CERT, CLIENT_KEY, CONF_CLIENT_ID, CONF_MODEL, DEFAULT_PORT
-from .vidaa import CannotConnect, VidaaTV
+from .const import (
+    CLIENT_CERT,
+    CLIENT_KEY,
+    CONF_CLIENT_ID,
+    CONF_MODEL,
+    DEFAULT_PORT,
+    DOMAIN,
+)
+from .vidaa import CannotConnect, InvalidAuth, VidaaTV
 
 PLATFORMS = [Platform.MEDIA_PLAYER, Platform.REMOTE]
 
@@ -36,9 +43,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: VidaaConfigEntry) -> boo
 
     try:
         await tv.async_connect()
+        if not await tv.async_authenticate():
+            await tv.async_disconnect()
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN, translation_key="pairing_required"
+            )
+    except InvalidAuth as err:
+        await tv.async_disconnect()
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN, translation_key="invalid_auth"
+        ) from err
     except CannotConnect as err:
         raise ConfigEntryNotReady(
-            f"Unable to reach VIDAA TV at {entry.data[CONF_HOST]}"
+            translation_domain=DOMAIN,
+            translation_key="cannot_connect",
+            translation_placeholders={"host": entry.data[CONF_HOST]},
         ) from err
 
     entry.runtime_data = tv

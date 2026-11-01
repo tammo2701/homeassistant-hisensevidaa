@@ -16,6 +16,7 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
@@ -23,6 +24,7 @@ from .const import (
     KEEPALIVE,
     MQTT_PASSWORD,
     MQTT_USERNAME,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,8 +46,17 @@ def _build_client(client_id: str) -> mqtt.Client:
         return mqtt.Client(client_id=client_id)
 
 
-class VidaaError(Exception):
+class VidaaError(HomeAssistantError):
     """Base error for the VIDAA client."""
+
+    def __init__(self, message: str) -> None:
+        """Create a translated user-facing command or connection error."""
+        super().__init__(
+            message,
+            translation_domain=DOMAIN,
+            translation_key="communication_error",
+            translation_placeholders={"error": message},
+        )
 
 
 class CannotConnect(VidaaError):
@@ -79,6 +90,9 @@ class VidaaTV:
         self._certfile = certfile
         self._keyfile = keyfile
         self._tls_ready = False
+        self._connect_future: asyncio.Future[None] | None = None
+        self._network_loop_started = False
+        self._has_connected = False
         self._listeners: list[Callable[[], None]] = []
         self._message_hooks: list[Callable[[str, Any], None]] = []
 
@@ -126,41 +140,77 @@ class VidaaTV:
         """Connect and start the network loop."""
         if not self._tls_ready:
             await self.hass.async_add_executor_job(self._setup_tls)
+        self._connect_future = self.hass.loop.create_future()
         try:
             await self.hass.async_add_executor_job(
                 self._client.connect, self.host, self.port, KEEPALIVE
             )
+            self._client.loop_start()
+            self._network_loop_started = True
+            await asyncio.wait_for(self._connect_future, DISCOVERY_TIMEOUT)
+        except asyncio.TimeoutError as err:
+            await self.async_disconnect()
+            raise CannotConnect("Timed out waiting for the TV MQTT connection") from err
+        except (CannotConnect, InvalidAuth):
+            await self.async_disconnect()
+            raise
         except (OSError, socket.error) as err:
-            _LOGGER.error(
-                "Failed to connect to VIDAA TV at %s:%s: %s",
-                self.host,
-                self.port,
-                err,
-            )
+            await self.async_disconnect()
             raise CannotConnect(str(err)) from err
-        self._client.loop_start()
-
     async def async_disconnect(self) -> None:
         """Stop the loop and disconnect."""
-        await self.hass.async_add_executor_job(self._client.disconnect)
-        self._client.loop_stop()
+        if self._network_loop_started:
+            await self.hass.async_add_executor_job(self._client.disconnect)
+            await self.hass.async_add_executor_job(self._client.loop_stop)
+            self._network_loop_started = False
+
+    def _finish_connect(self, error: Exception | None = None) -> None:
+        """Resolve the startup waiter safely from the MQTT network thread."""
+        future = self._connect_future
+        if future is None:
+            return
+
+        def _resolve() -> None:
+            if future.done():
+                return
+            if error is not None:
+                future.set_exception(error)
+            else:
+                future.set_result(None)
+
+        self.hass.loop.call_soon_threadsafe(_resolve)
 
     # -- paho callbacks (run in the network thread) --------------------
 
     def _on_connect(self, client, userdata, flags, rc) -> None:
         if rc != 0:
-            _LOGGER.warning("VIDAA TV %s refused connection (rc=%s)", self.host, rc)
+            error: Exception = (
+                InvalidAuth("The VIDAA TV rejected the MQTT credentials")
+                if int(rc) == 5
+                else CannotConnect(f"The TV refused the MQTT connection ({rc})")
+            )
+            self._finish_connect(error)
             return
         client.subscribe(TOPIC_BROADCAST)
         client.subscribe(f"{self._mobile}/#")
+        was_available = self.available
         self.available = True
+        if was_available is False and self._has_connected:
+            _LOGGER.info("Connection to VIDAA TV %s restored", self.host)
+        self._has_connected = True
         # Pull current state right away.
         self.send("ui_service", "gettvstate")
         self.send("platform_service", "getvolume")
+        self._finish_connect()
         self._dispatch()
 
     def _on_disconnect(self, client, userdata, rc) -> None:
+        was_available = self.available
         self.available = False
+        if was_available:
+            _LOGGER.warning("Connection to VIDAA TV %s was lost", self.host)
+        if self._connect_future is not None:
+            self._finish_connect(CannotConnect("The TV disconnected during startup"))
         self._dispatch()
 
     def _on_message(self, client, userdata, msg) -> None:
@@ -198,7 +248,9 @@ class VidaaTV:
         """Publish a raw payload to the TV."""
         if isinstance(payload, (dict, list)):
             payload = json.dumps(payload)
-        self._client.publish(topic, payload)
+        result = self._client.publish(topic, payload)
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            raise CannotConnect(f"Unable to publish command to VIDAA TV ({result.rc})")
 
     def send(self, service: str, action: str, payload: Any = "") -> None:
         """Publish an action to the TV."""
@@ -244,11 +296,13 @@ class VidaaTV:
 
         def _hook(topic: str, data: Any) -> None:
             if topic.endswith("/ui_service/data/authentication"):
-                if not future.done():
-                    future.set_result(False)  # PIN required
+                self.hass.loop.call_soon_threadsafe(_resolve, False)
             elif topic.endswith("/data/gettvstate"):
-                if not future.done():
-                    future.set_result(True)  # already paired
+                self.hass.loop.call_soon_threadsafe(_resolve, True)
+
+        def _resolve(already_paired: bool) -> None:
+            if not future.done():
+                future.set_result(already_paired)
 
         remove = self.add_message_hook(_hook)
         try:
@@ -266,8 +320,12 @@ class VidaaTV:
         future: asyncio.Future[bool] = self.hass.loop.create_future()
 
         def _hook(topic: str, data: Any) -> None:
-            if topic.endswith("/data/authenticationcode") and not future.done():
+            if topic.endswith("/data/authenticationcode"):
                 ok = isinstance(data, dict) and data.get("result") in (1, "1", True)
+                self.hass.loop.call_soon_threadsafe(_resolve, ok)
+
+        def _resolve(ok: bool) -> None:
+            if not future.done():
                 future.set_result(ok)
 
         remove = self.add_message_hook(_hook)

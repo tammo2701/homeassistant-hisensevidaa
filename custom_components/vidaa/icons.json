@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "remote": {
+      "remote": {
+        "default": "mdi:remote-tv"
+      }
+    }
+  }
+}

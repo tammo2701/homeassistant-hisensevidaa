@@ -26,6 +26,27 @@
           "scan_again": "Scan again"
         }
       },
+      "dhcp_confirm": {
+        "title": "New VIDAA TV discovered",
+        "description": "Found {name} at {host}. Continue to pair this TV?"
+      },
+      "reconfigure": {
+        "title": "Update VIDAA TV connection",
+        "description": "Change the TV address, display name, or optional Wake-on-LAN MAC address.",
+        "data": {
+          "host": "IP address",
+          "name": "Name",
+          "mac": "MAC address (for Wake-on-LAN)",
+          "port": "Port"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Pair with the TV again",
+        "description": "Enter the PIN displayed on the TV screen to restore Home Assistant access.",
+        "data": {
+          "pin": "PIN"
+        }
+      },
       "pair": {
         "title": "Pair with the TV",
         "description": "Enter the PIN code shown on the TV screen.",
@@ -38,12 +59,43 @@
       "cannot_connect": "Could not connect to the TV. Check the IP address, network, and that the TV is on.",
       "invalid_auth": "The TV rejected the PIN. Please try again.",
       "invalid_mac": "Enter a valid MAC address.",
-      "no_tvs_found": "No VIDAA TVs were found on the enabled local networks."
+      "no_tvs_found": "No VIDAA TVs were found on the enabled local networks.",
+      "scan_failed": "Home Assistant could not scan the local networks. Try again or enter the TV address manually."
     },
     "abort": {
       "already_configured": "This TV is already configured.",
-      "not_vidaa_tv": "The discovered device does not appear to be a VIDAA TV.",
+      "not_vidaa_tv": "The discovered device does not expose the VIDAA service.",
       "no_host": "The discovered TV did not provide a network address."
+    },
+    "exceptions": {
+      "cannot_connect": {
+        "message": "Could not connect to the VIDAA TV at {host}. Check that it is on and reachable on your local network."
+      },
+      "invalid_auth": {
+        "message": "The TV rejected Home Assistant's connection. Pair it again to restore access."
+      },
+      "pairing_required": {
+        "message": "This TV is no longer paired with Home Assistant. Enter the TV's pairing PIN to reconnect."
+      },
+      "communication_error": {
+        "message": "The VIDAA TV command failed: {error}"
+      },
+      "invalid_command": {
+        "message": "The requested key is not supported by the VIDAA TV."
+      },
+      "invalid_source": {
+        "message": "The selected input is not available on this TV."
+      },
+      "mac_required": {
+        "message": "Enter the TV's MAC address to turn it on with Wake-on-LAN."
+      }
+    }
+  },
+  "entity": {
+    "remote": {
+      "remote": {
+        "name": "Remote"
+      }
     }
   }
 }
