@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Hisense VIDAA TV",
+        "menu_options": {
+          "scan": "Scan the local network",
+          "manual": "Enter connection details"
+        }
+      },
+      "manual": {
+        "title": "Connect to your VIDAA TV",
+        "description": "Enter the TV's IP address. The TV must be on and mobile remote control must be enabled.",
+        "data": {
+          "host": "IP address",
+          "name": "Name",
+          "mac": "MAC address (for Wake-on-LAN)",
+          "port": "Port"
+        }
+      },
+      "scan": {
+        "title": "Find TVs on your local network",
+        "description": "The scan checks enabled local IPv4 networks for the VIDAA service on port {port}. If no TVs are found, confirm that Home Assistant and the TV are on the same LAN, then scan again or use manual setup.",
+        "data": {
+          "host": "Discovered TV",
+          "scan_again": "Scan again"
+        }
+      },
+      "pair": {
+        "title": "Pair with the TV",
+        "description": "Enter the PIN code shown on the TV screen.",
+        "data": {
+          "pin": "PIN"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the TV. Check the IP address, network, and that the TV is on.",
+      "invalid_auth": "The TV rejected the PIN. Please try again.",
+      "invalid_mac": "Enter a valid MAC address.",
+      "no_tvs_found": "No VIDAA TVs were found on the enabled local networks."
+    },
+    "abort": {
+      "already_configured": "This TV is already configured.",
+      "not_vidaa_tv": "The discovered device does not appear to be a VIDAA TV.",
+      "no_host": "The discovered TV did not provide a network address."
+    }
+  }
+}
