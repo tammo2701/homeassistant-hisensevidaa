@@ -20,14 +20,14 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .const import (
-    CLIENT_CERT,
-    CLIENT_KEY,
     CONF_CLIENT_ID,
     CONF_MODEL,
+    CONF_AUTH_METHOD,
     DEFAULT_NAME,
     DEFAULT_PORT,
     DOMAIN,
 )
+from .auth import build_auth_profiles, profile_for_method
 from .vidaa import CannotConnect, InvalidAuth, VidaaTV
 
 _LOGGER = logging.getLogger(__name__)
@@ -386,27 +386,40 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
         client_id = user_input.get(CONF_CLIENT_ID) or f"ha-{uuid.uuid4().hex[:12]}"
-        self._data = {**user_input, CONF_HOST: host, CONF_CLIENT_ID: client_id}
-        tv = await self._async_create_client(self._data)
-        try:
-            await tv.async_connect()
-            already_paired = await tv.async_authenticate()
-        except (CannotConnect, InvalidAuth) as err:
-            await _safe_disconnect(tv)
-            if isinstance(err, CannotConnect):
-                _LOGGER.warning(
-                    "VIDAA setup failed for %s:%s: %s",
-                    host,
-                    user_input.get(CONF_PORT, DEFAULT_PORT),
-                    err,
-                )
-                error = err.reason
-            else:
-                error = "invalid_auth"
+        package_dir = os.path.dirname(__file__)
+        profiles = build_auth_profiles(package_dir, client_id, mac or await self._mac_for_host(host))
+        tv = None
+        last_error: CannotConnect | InvalidAuth | None = None
+        for profile in profiles:
+            self._data = {
+                **user_input,
+                CONF_HOST: host,
+                CONF_CLIENT_ID: profile.client_id,
+                CONF_AUTH_METHOD: profile.method,
+            }
+            tv = self._client_from_profile(self._data, profile)
+            try:
+                await tv.async_connect()
+                already_paired = await tv.async_authenticate()
+                break
+            except CannotConnect as err:
+                last_error = err
+                await _safe_disconnect(tv)
+                tv = None
+                # A TCP refusal/timeout cannot be fixed by changing credentials.
+                if err.reason in ("connection_timeout", "connection_failed"):
+                    break
+            except InvalidAuth as err:
+                last_error = err
+                await _safe_disconnect(tv)
+                tv = None
+        if tv is None:
+            err = last_error or CannotConnect("No compatible VIDAA authentication profile")
+            _LOGGER.warning("VIDAA setup failed for %s:%s: %s", host, user_input.get(CONF_PORT, DEFAULT_PORT), err)
             return self.async_show_form(
                 step_id="manual",
                 data_schema=MANUAL_SCHEMA,
-                errors={"base": error},
+                errors={"base": err.reason if isinstance(err, CannotConnect) else "invalid_auth"},
             )
 
         self._tv = tv
@@ -417,14 +430,39 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _async_create_client(self, data: dict[str, Any]) -> VidaaTV:
         """Create a client using the integration's bundled TLS identity."""
         package_dir = os.path.dirname(__file__)
+        profile = profile_for_method(
+            package_dir,
+            str(data[CONF_CLIENT_ID]),
+            data.get(CONF_MAC),
+            data.get(CONF_AUTH_METHOD),
+        )
+        return self._client_from_profile(data, profile)
+
+    def _client_from_profile(self, data: dict[str, Any], profile) -> VidaaTV:
+        """Create a client for one candidate authentication profile."""
         return VidaaTV(
             self.hass,
             host=str(data[CONF_HOST]),
             port=int(data.get(CONF_PORT, DEFAULT_PORT)),
-            client_id=str(data[CONF_CLIENT_ID]),
-            certfile=os.path.join(package_dir, CLIENT_CERT),
-            keyfile=os.path.join(package_dir, CLIENT_KEY),
+            client_id=profile.client_id,
+            certfile=profile.certfile,
+            keyfile=profile.keyfile,
+            username=profile.username,
+            password=profile.password,
+            auth_method=profile.method,
         )
+
+    async def _mac_for_host(self, host: str) -> str:
+        """Look up a known DHCP MAC so dynamic VIDAA credentials can be made."""
+        from homeassistant.components import dhcp
+
+        for info in dhcp.async_discovered_service_info(self.hass):
+            if str(info.ip) == host:
+                try:
+                    return dr.format_mac(info.macaddress)
+                except (TypeError, ValueError, vol.Invalid):
+                    return ""
+        return ""
 
     async def async_step_pair(
         self, user_input: dict[str, Any] | None = None

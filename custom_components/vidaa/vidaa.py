@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import (
     DISCOVERY_TIMEOUT,
+    CONNECT_TIMEOUT,
     KEEPALIVE,
     MQTT_PASSWORD,
     MQTT_USERNAME,
@@ -83,12 +84,16 @@ class VidaaTV:
         client_id: str,
         certfile: str,
         keyfile: str,
+        username: str = MQTT_USERNAME,
+        password: str = MQTT_PASSWORD,
+        auth_method: str = "static_legacy",
     ) -> None:
         """Initialise the client."""
         self.hass = hass
         self.host = host
         self.port = port
         self.client_id = client_id
+        self.auth_method = auth_method
         self.available = False
         self.state: dict[str, Any] = {}
 
@@ -102,7 +107,7 @@ class VidaaTV:
         self._message_hooks: list[Callable[[str, Any], None]] = []
 
         self._client = _build_client(client_id)
-        self._client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        self._client.username_pw_set(username, password)
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
@@ -152,7 +157,7 @@ class VidaaTV:
             )
             self._client.loop_start()
             self._network_loop_started = True
-            await asyncio.wait_for(self._connect_future, DISCOVERY_TIMEOUT)
+            await asyncio.wait_for(self._connect_future, CONNECT_TIMEOUT)
         except asyncio.TimeoutError as err:
             await self.async_disconnect()
             raise CannotConnect(
@@ -227,6 +232,12 @@ class VidaaTV:
         # Pull current state right away. A rejected state request should not
         # make a successfully established broker connection look offline.
         try:
+            if self.auth_method in ("dynamic_modern", "static_modern"):
+                self.send(
+                    "ui_service",
+                    "vidaa_app_connect",
+                    {"app_version": 2, "connect_result": 0, "device_type": "Mobile App"},
+                )
             self.send("ui_service", "gettvstate")
             self.send("platform_service", "getvolume")
         except CannotConnect as err:
@@ -369,7 +380,10 @@ class VidaaTV:
 
         remove = self.add_message_hook(_hook)
         try:
-            self.send("ui_service", "authenticationcode", {"authNum": int(pin)})
+            auth_num: int | str = pin if self.auth_method in (
+                "dynamic_modern", "static_modern"
+            ) else int(pin)
+            self.send("ui_service", "authenticationcode", {"authNum": auth_num})
             try:
                 ok = await asyncio.wait_for(future, DISCOVERY_TIMEOUT)
             except asyncio.TimeoutError as err:

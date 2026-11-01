@@ -27,6 +27,13 @@ The integration targets Hisense VIDAA TVs from model years 2020–2026. Model ye
 
 The setup flow checks the connection before saving the entry. TVs that expose a different, non-TLS protocol are not supported by this integration.
 
+During setup, the integration tries the known VIDAA authentication profiles
+for newer and legacy firmware. When the TV's MAC address is available from
+DHCP or entered in the setup form, it can also derive the per-TV credentials
+used by newer VIDAA releases. Authentication failure is reported separately
+from an unreachable IP address. The bundled mobile-client certificate source
+and license are documented in [`custom_components/vidaa/certs/ASSET_SOURCE.md`](custom_components/vidaa/certs/ASSET_SOURCE.md).
+
 ## Installation
 
 ### HACS

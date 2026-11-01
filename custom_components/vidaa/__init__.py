@@ -10,13 +10,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from .const import (
-    CLIENT_CERT,
-    CLIENT_KEY,
     CONF_CLIENT_ID,
+    CONF_AUTH_METHOD,
+    CONF_MAC,
     CONF_MODEL,
     DEFAULT_PORT,
     DOMAIN,
 )
+from .auth import profile_for_method
 from .vidaa import CannotConnect, InvalidAuth, VidaaTV
 
 PLATFORMS = [Platform.MEDIA_PLAYER, Platform.REMOTE]
@@ -26,17 +27,23 @@ type VidaaConfigEntry = ConfigEntry[VidaaTV]
 
 async def async_setup_entry(hass: HomeAssistant, entry: VidaaConfigEntry) -> bool:
     """Set up VIDAA TV from a config entry."""
-    package_dir = os.path.dirname(__file__)
-    certfile = os.path.join(package_dir, CLIENT_CERT)
-    keyfile = os.path.join(package_dir, CLIENT_KEY)
+    profile = profile_for_method(
+        os.path.dirname(__file__),
+        entry.data[CONF_CLIENT_ID],
+        entry.data.get(CONF_MAC),
+        entry.data.get(CONF_AUTH_METHOD),
+    )
 
     tv = VidaaTV(
         hass,
         host=entry.data[CONF_HOST],
         port=entry.data.get(CONF_PORT, DEFAULT_PORT),
-        client_id=entry.data[CONF_CLIENT_ID],
-        certfile=certfile,
-        keyfile=keyfile,
+        client_id=profile.client_id,
+        certfile=profile.certfile,
+        keyfile=profile.keyfile,
+        username=profile.username,
+        password=profile.password,
+        auth_method=profile.method,
     )
     if model := entry.data.get(CONF_MODEL):
         tv.state["model"] = model

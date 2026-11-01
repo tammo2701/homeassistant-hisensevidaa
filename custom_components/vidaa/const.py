@@ -17,13 +17,17 @@ MQTT_PASSWORD = "multimqttservice"
 # the TV expects). Relative to this package directory.
 CLIENT_CERT = "certs/vidaa_client.crt"
 CLIENT_KEY = "certs/vidaa_client.key"
+VIDAA_APP_CERT = "certs/vidaa_app_client.pem"
+VIDAA_APP_KEY = "certs/vidaa_app_client.key"
 
 CONF_MAC = "mac"
 CONF_CLIENT_ID = "client_id"
 CONF_MODEL = "model"
+CONF_AUTH_METHOD = "auth_method"
 
 # How long the config flow waits for the TV to answer over MQTT.
 DISCOVERY_TIMEOUT = 8
+CONNECT_TIMEOUT = 4
 
 # Remote key codes accepted by the sendkey action.
 KEY_POWER = "KEY_POWER"
