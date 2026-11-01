@@ -407,7 +407,7 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await _safe_disconnect(tv)
                 tv = None
                 # A TCP refusal/timeout cannot be fixed by changing credentials.
-                if err.reason in ("connection_timeout", "connection_failed"):
+                if profile.method == "plain_legacy":
                     break
             except InvalidAuth as err:
                 last_error = err
@@ -450,6 +450,8 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             username=profile.username,
             password=profile.password,
             auth_method=profile.method,
+            use_tls=profile.use_tls,
+            requires_pairing=profile.requires_pairing,
         )
 
     async def _mac_for_host(self, host: str) -> str:

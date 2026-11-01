@@ -87,6 +87,8 @@ class VidaaTV:
         username: str = MQTT_USERNAME,
         password: str = MQTT_PASSWORD,
         auth_method: str = "static_legacy",
+        use_tls: bool = True,
+        requires_pairing: bool = True,
     ) -> None:
         """Initialise the client."""
         self.hass = hass
@@ -94,6 +96,8 @@ class VidaaTV:
         self.port = port
         self.client_id = client_id
         self.auth_method = auth_method
+        self.use_tls = use_tls
+        self.requires_pairing = requires_pairing
         self.available = False
         self.state: dict[str, Any] = {}
 
@@ -150,7 +154,7 @@ class VidaaTV:
         """Connect and start the network loop."""
         self._connect_future = self.hass.loop.create_future()
         try:
-            if not self._tls_ready:
+            if self.use_tls and not self._tls_ready:
                 await self.hass.async_add_executor_job(self._setup_tls)
             await self.hass.async_add_executor_job(
                 self._client.connect, self.host, self.port, KEEPALIVE
@@ -357,6 +361,8 @@ class VidaaTV:
         remove = self.add_message_hook(_hook)
         try:
             self.send("ui_service", "gettvstate")
+            if not self.requires_pairing:
+                return True
             try:
                 return await asyncio.wait_for(future, DISCOVERY_TIMEOUT)
             except asyncio.TimeoutError:

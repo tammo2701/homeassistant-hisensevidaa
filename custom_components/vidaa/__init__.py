@@ -44,6 +44,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: VidaaConfigEntry) -> boo
         username=profile.username,
         password=profile.password,
         auth_method=profile.method,
+        use_tls=profile.use_tls,
+        requires_pairing=profile.requires_pairing,
     )
     if model := entry.data.get(CONF_MODEL):
         tv.state["model"] = model

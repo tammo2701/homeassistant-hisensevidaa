@@ -1,6 +1,6 @@
 # Hisense VIDAA TV for Home Assistant
 
-A local Home Assistant integration for Hisense TVs running VIDAA OS, focused on models from **2020 through 2026**. It connects to the TV's built-in MQTT service over TLS. No cloud account, external broker, or bridge is required.
+A local Home Assistant integration for Hisense TVs running VIDAA OS, including older models from around **2018 onward**. It connects to the TV's built-in MQTT service, using TLS on newer firmware and plain MQTT on some legacy firmware. No cloud account, external broker, or bridge is required.
 
 ## Quick links
 
@@ -23,9 +23,9 @@ Add and install the repository in HACS first. Then use the Home Assistant button
 
 ## Compatibility
 
-The integration targets Hisense VIDAA TVs from model years 2020–2026. Model year does not guarantee compatibility because VIDAA networking and authentication differ by model, market, and firmware. A TV must expose the TLS-protected MQTT service on TCP port `36669` and allow mobile remote control and PIN pairing. Keep the TV powered on and connected to the same reachable LAN during setup.
+The integration supports multiple VIDAA generations, including some 2018–2019 models. Model year does not guarantee compatibility because networking and authentication vary by model, market, and firmware. Newer sets typically expose TLS MQTT and PIN pairing; some older sets use unencrypted MQTT and authorize the remote without a PIN. Keep the TV powered on and connected to the same reachable LAN during setup.
 
-The setup flow checks the connection before saving the entry. TVs that expose a different, non-TLS protocol are not supported by this integration.
+The setup flow tries supported secure and legacy connection profiles before saving the entry. Some older sets use unencrypted local MQTT; use this only on a trusted home network. TVs exposing a different control protocol are not supported.
 
 During setup, the integration tries the known VIDAA authentication profiles
 for newer and legacy firmware. When the TV's MAC address is available from

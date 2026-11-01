@@ -20,6 +20,7 @@ _PATTERN = "38D65DC30F45109A369A86FCE866A85B"
 _TIME_XOR = 0x569814772B03A968
 _SUFFIX_LEGACY = "h*i&s%e!r^v0i1c9"
 _SUFFIX_MODERN = "h!i@s#$v%i^d&a*a"
+_LEGACY_MAC = "00:00:00:00:00:00"
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,8 @@ class AuthProfile:
     password: str
     certfile: str
     keyfile: str
+    use_tls: bool = True
+    requires_pairing: bool = True
 
 
 def _dynamic_profile(
@@ -96,6 +99,20 @@ def build_auth_profiles(
             ),
         )
     )
+    # A number of early VIDAA sets expose the same MQTT topic tree without
+    # TLS and accept commands directly. They never issue a pairing PIN.
+    profiles.append(
+        AuthProfile(
+            method="plain_legacy",
+            client_id=f"{mac.upper() if mac else _LEGACY_MAC}$normal",
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            certfile="",
+            keyfile="",
+            use_tls=False,
+            requires_pairing=False,
+        )
+    )
     return profiles
 
 
@@ -107,4 +124,15 @@ def profile_for_method(
         return _dynamic_profile(package_dir, mac, method)
     if method == "static_modern":
         return build_auth_profiles(package_dir, client_id, None)[0]
+    if method == "plain_legacy":
+        return AuthProfile(
+            method="plain_legacy",
+            client_id=f"{mac.upper() if mac else _LEGACY_MAC}$normal",
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            certfile="",
+            keyfile="",
+            use_tls=False,
+            requires_pairing=False,
+        )
     return build_auth_profiles(package_dir, client_id, None)[-1]
