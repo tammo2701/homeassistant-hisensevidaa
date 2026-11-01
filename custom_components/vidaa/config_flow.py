@@ -397,8 +397,8 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_CLIENT_ID: profile.client_id,
                 CONF_AUTH_METHOD: profile.method,
             }
-            tv = self._client_from_profile(self._data, profile)
             try:
+                tv = self._client_from_profile(self._data, profile)
                 await tv.async_connect()
                 already_paired = await tv.async_authenticate()
                 break
@@ -413,6 +413,20 @@ class VidaaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 last_error = err
                 await _safe_disconnect(tv)
                 tv = None
+            except Exception:  # noqa: BLE001 - log unexpected library/firmware errors for diagnosis
+                _LOGGER.exception(
+                    "Unexpected error while trying VIDAA profile %s for %s:%s",
+                    profile.method,
+                    host,
+                    user_input.get(CONF_PORT, DEFAULT_PORT),
+                )
+                if tv is not None:
+                    await _safe_disconnect(tv)
+                return self.async_show_form(
+                    step_id="manual",
+                    data_schema=MANUAL_SCHEMA,
+                    errors={"base": "connection_failed"},
+                )
         if tv is None:
             err = last_error or CannotConnect("No compatible VIDAA authentication profile")
             _LOGGER.warning("VIDAA setup failed for %s:%s: %s", host, user_input.get(CONF_PORT, DEFAULT_PORT), err)
